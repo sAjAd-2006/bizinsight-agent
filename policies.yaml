@@ -1,0 +1,38 @@
+# Policy Server Configuration
+# Day 5: Zero-Trust Development — Structural Gating (The Traffic Lights)
+# This YAML defines deterministic rules for tool-level permissions
+# based on role and environment.
+
+environments:
+  localhost:
+    blocked_tools:
+      - send_email
+      - delete_database
+      - deploy_production
+  production:
+    blocked_tools:
+      - delete_database
+      - drop_table
+      - execute_raw_sql
+
+roles:
+  viewer:
+    allowed_tools:
+      - read_csv
+      - get_columns
+  analyst:
+    allowed_tools:
+      - read_csv
+      - get_columns
+      - filter_rows
+      - compute_aggregate
+      - detect_anomalies
+  chart_creator:
+    allowed_tools:
+      - create_bar_chart
+      - create_line_chart
+      - create_pie_chart
+      - create_heatmap
+  admin:
+    allowed_tools:
+      - "*"

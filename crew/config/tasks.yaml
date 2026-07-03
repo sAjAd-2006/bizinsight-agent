@@ -1,0 +1,46 @@
+# Task Configuration
+# Defines the tasks for each agent in the pipeline
+
+analyze_data_task:
+  description: >
+    Analyze the business data in "{data_file}" to answer: {query}.
+    Use the MCP Data Server tools to:
+    1. Profile the data (get_columns) to understand structure
+    2. Read a sample (read_csv) to see the data
+    3. Compute aggregations by category, region, and time period
+    4. Detect anomalies in key numeric columns
+    5. Identify the top and bottom performers
+    Return all raw results as structured analysis data.
+  expected_output: >
+    A comprehensive JSON analysis containing: column profiles, aggregated
+    statistics by category and region, detected anomalies, and trend
+    observations. Include specific numbers for every finding.
+
+generate_insights_task:
+  description: >
+    Based on the following analysis results, generate 3-5 business insights
+    with clear impact ratings and recommendations:
+    {analysis_results}
+    For each insight, identify: title, category (revenue/cost/efficiency/risk/opportunity),
+    impact level (high/medium/low), a detailed description, and a specific recommendation.
+  expected_output: >
+    A list of 3-5 structured insights in JSON format, each with title, category,
+    impact, description, data_points, and recommendation fields. Include specific
+    numbers and comparisons.
+
+write_report_task:
+  description: >
+    Write a professional business analysis report in markdown format.
+    Data source: {data_file}
+    User query: {query}
+    Analysis results: {analysis_results}
+    Generated insights: {insights}
+    Generated charts: {chart_files}
+    Follow the report-writing skill structure: header, executive summary,
+    methodology, key findings, data overview, detailed analysis, visualizations,
+    and recommendations.
+  expected_output: >
+    A complete markdown report saved to the output directory. The report must
+    include an executive summary (under 100 words), numbered findings with
+    impact ratings, at least one chart reference, and a prioritized
+    recommendations list.
