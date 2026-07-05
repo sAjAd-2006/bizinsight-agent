@@ -24,9 +24,11 @@ roles:
     allowed_tools:
       - read_csv
       - get_columns
-      - filter_rows
       - compute_aggregate
       - detect_anomalies
+      - create_bar_chart
+      - create_line_chart
+      - compute_key_metrics
   chart_creator:
     allowed_tools:
       - create_bar_chart

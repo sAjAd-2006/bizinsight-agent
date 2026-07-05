@@ -84,6 +84,29 @@ class TestDataServer:
         assert isinstance(iqr, float)
         assert isinstance(lower, float)
 
+    def test_path_resolution_with_data_prefix(self):
+        """Allow filenames that already include the data directory prefix."""
+        from main import create_mcp_tools
+
+        tools = create_mcp_tools()
+        read_tool = next(tool for tool in tools if tool.name == "read_csv")
+        result = json.loads(read_tool._run("data/test.csv"))
+
+        assert "error" not in result
+        assert result["total_rows"] == 5
+
+    def test_default_filename_fallback(self):
+        """Use a default data file when the tool is called without a filename."""
+        from main import create_mcp_tools
+
+        os.environ["DEFAULT_DATA_FILE"] = "data/test.csv"
+        tools = create_mcp_tools()
+        read_tool = next(tool for tool in tools if tool.name == "read_csv")
+        result = json.loads(read_tool._run())
+
+        assert "error" not in result
+        assert result["total_rows"] == 5
+
     def test_security_path_traversal(self):
         """Day 4: Verify file access is restricted to DATA_DIR."""
         test_path = os.path.abspath(os.path.join(self.data_dir, "..", "etc", "passwd"))

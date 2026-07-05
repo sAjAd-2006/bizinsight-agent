@@ -89,13 +89,14 @@ Small and medium businesses generate large volumes of operational data (sales, e
 ### Prerequisites
 
 - Python 3.10+
-- Google Gemini API key (or OpenAI/Anthropic)
+- An API key from [OpenRouter](https://openrouter.ai/) (supports Gemini, GPT, Claude, and more)
+- (Optional) Google Gemini API key if you prefer direct Gemini access
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/bizinsight-agent.git
+git clone https://github.com/sAjAd-2006/bizinsight-agent.git
 cd bizinsight-agent
 
 # Create virtual environment

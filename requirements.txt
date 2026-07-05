@@ -12,9 +12,10 @@ crewai-tools>=0.14.0
 mcp>=1.1.0
 
 # --- LLM Provider ---
-google-genai>=1.0.0
+# google-genai>=1.0.0
 # anthropic>=0.40.0  # Uncomment if using Claude
-# openai>=1.50.0     # Uncomment if using OpenAI
+openai>=1.50.0     # Using OpenAI
+litellm
 
 # --- Data Processing ---
 pandas>=2.2.0

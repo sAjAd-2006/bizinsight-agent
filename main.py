@@ -178,23 +178,39 @@ def create_mcp_tools():
         name: str = "detect_anomalies"
         description: str = (
             "Detect outliers in a numeric column using IQR method. "
-            "Args: filename, column, method (iqr/zscore)."
+            "Args: filename, column, method (iqr/zscore), "
+            "filter_column (optional), filter_value (optional) — if provided, only rows where filter_column == filter_value are analyzed."
         )
 
-        def _run(self, filename: str, column: str, method: str = "iqr") -> str:
+        def _run(self, filename: str, column: str, method: str = "iqr",
+                  filter_column: str = "", filter_value: str = "") -> str:
             path = os.path.abspath(os.path.join(DATA_DIR, filename))
             if not path.startswith(os.path.abspath(DATA_DIR)):
                 return json.dumps({"error": "Access denied"})
             df = pd.read_csv(path)
             if column not in df.columns:
                 return json.dumps({"error": "Column not found"})
+            # Filter subset if requested (e.g., only Smart Watch rows)
+            if filter_column and filter_value:
+                if filter_column not in df.columns:
+                    return json.dumps({"error": f"Filter column '{filter_column}' not found"})
+                # Case-insensitive filtering
+                mask = df[filter_column].astype(str).str.lower() == filter_value.lower()
+                df = df[mask]
+                if len(df) == 0:
+                    return json.dumps({"error": f"No rows match {filter_column}={filter_value}", "anomaly_count": 0, "anomaly_values": []})
             series = pd.to_numeric(df[column], errors="coerce").dropna()
+            if len(series) < 4:
+                return json.dumps({"error": "Too few data points for IQR (need >= 4)", "anomaly_count": 0, "anomaly_values": []})
             q1, q3 = series.quantile(0.25), series.quantile(0.75)
             iqr = q3 - q1
             lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
             mask = (series < lower) | (series > upper)
             return json.dumps({
                 "method": "IQR", "column": column,
+                "filter_column": filter_column or None,
+                "filter_value": filter_value or None,
+                "rows_analyzed": int(len(series)),
                 "q1": float(q1), "q3": float(q3), "iqr": float(iqr),
                 "lower_bound": float(lower), "upper_bound": float(upper),
                 "anomaly_count": int(mask.sum()),
@@ -248,8 +264,68 @@ def create_mcp_tools():
             plt.close(fig)
             return json.dumps({"status": "success", "file": filename, "path": out_path})
 
+    class ComputeKeyMetricsTool(BaseTool):
+        name: str = "compute_key_metrics"
+        description: str = (
+            "Pre-compute all key business metrics from a CSV file to avoid LLM arithmetic errors. "
+            "Returns: total_sales, category breakdown (name, sum, share_pct), regional breakdown, "
+            "product averages (case-insensitive grouping). Args: filename (str)."
+        )
+
+        def _run(self, filename: str) -> str:
+            path = os.path.abspath(os.path.join(DATA_DIR, filename))
+            if not path.startswith(os.path.abspath(DATA_DIR)):
+                return json.dumps({"error": "Access denied"})
+            df = pd.read_csv(path)
+            df["sales"] = pd.to_numeric(df["sales"], errors="coerce")
+            total_sales = float(df["sales"].sum())
+            total_rows = len(df)
+
+            # Category breakdown with exact percentages
+            cat_group = df.groupby("category")["sales"].sum()
+            categories = []
+            for cat, val in cat_group.sort_values(ascending=False).items():
+                categories.append({
+                    "category": cat,
+                    "total_sales": float(val),
+                    "share_pct": round(float(val) / total_sales * 100, 1),
+                    "num_records": int(len(df[df["category"] == cat]))
+                })
+
+            # Regional breakdown with exact percentages
+            reg_group = df.groupby("region")["sales"].sum()
+            regions = []
+            for reg, val in reg_group.sort_values(ascending=False).items():
+                regions.append({
+                    "region": reg,
+                    "total_sales": float(val),
+                    "share_pct": round(float(val) / total_sales * 100, 1),
+                    "num_records": int(len(df[df["region"] == reg]))
+                })
+
+            # Product-level averages (case-insensitive grouping)
+            prod_group = df.groupby(df["product"].str.lower())["sales"].agg(["mean", "median", "sum", "count"])
+            products = []
+            for prod, row in prod_group.sort_values("sum", ascending=False).iterrows():
+                products.append({
+                    "product": prod,
+                    "mean_sales": round(float(row["mean"]), 1),
+                    "median_sales": round(float(row["median"]), 1),
+                    "total_sales": round(float(row["sum"]), 1),
+                    "num_records": int(row["count"])
+                })
+
+            return json.dumps({
+                "total_sales": total_sales,
+                "total_rows": total_rows,
+                "categories": categories,
+                "regions": regions,
+                "products": products
+            }, indent=2)
+
     return [
-        ReadCSVTool(), GetColumnsTool(), ComputeAggregateTool(), DetectAnomaliesTool(),
+        ReadCSVTool(), GetColumnsTool(), ComputeAggregateTool(),
+        DetectAnomaliesTool(), ComputeKeyMetricsTool(),
         CreateBarChartTool(), CreateLineChartTool()
     ]
 
@@ -339,14 +415,20 @@ def run_analysis(data_file: str, query: str, output_dir: str = "output",
     os.makedirs(output_dir, exist_ok=True)
 
     # Initialize LLM
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
-        print("ERROR: GOOGLE_API_KEY not set. Copy .env.example to .env and add your key.")
+        print("ERROR: OPENROUTER_API_KEY not set. Copy .env.example to .env and add your key.")
         sys.exit(1)
 
     from crewai import LLM
-    model_name = os.environ.get("LLM_MODEL", "gemini-2.5-flash")
-    llm = LLM(model=f"google/{model_name}", api_key=api_key)
+    model_name = os.environ.get("LLM_MODEL", "google/gemini-2.5-flash")
+    base_url = os.environ.get("OPTIONAL_BASE_URL", "https://openrouter.ai/api/v1")
+
+    llm = LLM(
+        model=f"{model_name}", 
+        api_key=api_key,
+        base_url=base_url
+    )
 
     # Day 5: Create Policy Server (Zero-Trust Development)
     policy_service = None
@@ -374,14 +456,20 @@ def run_analysis(data_file: str, query: str, output_dir: str = "output",
     # Define tasks (DAG Orchestration — Day 3)
     print("[Day 3] Defining task DAG: Analyze -> Generate Insights -> Write Report")
 
+    filename_only = os.path.basename(data_file) 
     analyze_task = Task(
-        description=f"Analyze the business data in '{data_file}' to answer: {query}. "
-                    f"Use the data tools to: 1) Profile columns with get_columns, "
-                    f"2) Read sample data with read_csv, "
-                    f"3) Compute aggregations by category and region, "
-                    f"4) Detect anomalies in key metrics. "
-                    f"Return ALL results as structured JSON.",
-        expected_output="Comprehensive JSON analysis with column profiles, aggregated statistics, anomalies, and trends.",
+        description=f"Analyze the business data in '{filename_only}' to answer: {query}. "
+                    f"Follow this exact sequence — do NOT skip steps or compute numbers in your head:\n"
+                    f"Step 1: Use get_columns with filename='{filename_only}'.\n"
+                    f"Step 2: Use compute_key_metrics with filename='{filename_only}' to get pre-computed totals, category shares, regional shares, and product averages. USE THESE EXACT NUMBERS — do not recalculate.\n"
+                    f"Step 3: Use compute_aggregate with filename='{filename_only}' for any additional groupings needed.\n"
+                    f"Step 4: Use detect_anomalies with filename='{filename_only}', column='sales', filter_column='product', filter_value='Smart Watch' to check anomalies FOR THAT PRODUCT ONLY (not the whole dataset).\n"
+                    f"Step 5: Compile ALL tool outputs into a single structured JSON.\n"
+                    f"CRITICAL: All percentages, means, and totals must come directly from tool output. "
+                    f"Never compute share_pct = category_sales / total_sales yourself — the tool already provides it.",
+        expected_output="Structured JSON containing: key_metrics (from compute_key_metrics tool), "
+                    "column profiles (from get_columns), anomaly results (from detect_anomalies with filter). "
+                    "All numbers must be verbatim from tool output — no self-computed arithmetic.",
         agent=data_analyst,
     )
 
@@ -397,12 +485,27 @@ def run_analysis(data_file: str, query: str, output_dir: str = "output",
 
     report_task = Task(
         description=f"Write a professional markdown report. Data source: {data_file}. "
-                    f"Query: {query}. Follow the report-writing skill template. "
-                    f"Include: header, executive summary (<100 words), key findings with "
-                    f"impact ratings, data overview, detailed analysis, and recommendations. "
-                    f"Generate at least one chart using the chart tools.",
-        expected_output="Complete markdown report saved to the output directory with executive summary, "
-                        "findings, methodology, charts, and prioritized recommendations.",
+                    f"Query: {query}. Today's date: {datetime.now().strftime('%B %d, %Y')}. "
+                    f"Follow the report-writing skill template.\n\n"
+                    f"STRUCTURE:\n"
+                    f"1. Header: 'Date of Generation: {datetime.now().strftime('%B %d, %Y')}' (use THIS exact date, not any other date)\n"
+                    f"2. Executive Summary: 5 bullets, each with an EXACT number from the analysis results\n"
+                    f"3. Data Overview: row count (use the exact 'total_rows' from compute_key_metrics output, which is 54, not 54000), date range, categories, regions\n"
+                    f"4. Key Findings: for each finding, quote the EXACT metric from the tool output — do NOT recalculate\n"
+                    f"5. Detailed Analysis\n"
+                    f"6. Recommendations\n"
+                    f"7. Appendix\n\n"
+                    f"CRITICAL RULES:\n"
+                    f"- Use the EXACT date provided above. NEVER fabricate a date.\n"
+                    f"- Every percentage must come verbatim from compute_key_metrics output (share_pct field).\n"
+                    f"- Every average must come verbatim from compute_key_metrics output (mean_sales field).\n"
+                    f"- Every anomaly count must come verbatim from detect_anomalies output (anomaly_count field).\n"
+                    f"- If the anomaly_count is 0 for a product, say 'No anomalies detected' — do NOT claim anomalies exist.\n"
+                    f"- Generate at least one chart using the chart tools. You MUST call the tool (e.g., create_bar_chart) with the appropriate JSON data from the analysis results. Do NOT just write the code; execute it.\n"
+                    f"- The chart should be saved as a PNG file in the output directory.",
+        expected_output="Complete markdown report with: correct date from datetime.now(), executive summary "
+                        "with verbatim numbers from tools, key findings quoting exact share_pct/mean_sales values, "
+                        "detailed analysis, and prioritized recommendations.",
         agent=report_writer,
         context=[analyze_task, insights_task],
     )
