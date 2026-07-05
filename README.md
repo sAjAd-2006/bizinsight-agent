@@ -192,9 +192,6 @@ bizinsight-agent/
 ├── data/
 │   └── sample_business_data.csv # Sample dataset for demo
 │
-├── notebooks/
-│   └── demo.ipynb               # Interactive Kaggle notebook
-│
 ├── output/                      # Generated reports and charts
 │
 └── tests/
