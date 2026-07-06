@@ -180,10 +180,29 @@ bizinsight-agent/
 │   ├── data_server/             # MCP server for data access + SKILL.md
 │   └── charts_server/           # MCP server for chart generation + SKILL.md (optional)
 ├── skills/                      # Agent Skills (Day 3: Skills)
-│   ├── data-analysis/           # SKILL.md + scripts + references
-│   ├── insight-generation/      # SKILL.md + frameworks
-│   └── report-writing/          # SKILL.md + templates
-├── data/                        # Sample dataset for demo
+│   ├── data-analysis/
+│   │   ├── SKILL.md             # Analysis methodology
+│   │   ├── scripts/
+│   │   │   └── analyze.py       # Statistical analysis functions
+│   │   └── references/
+│   │       └── methods.md       # Statistical methods reference
+│   ├── insight-generation/
+│   │   ├── SKILL.md             # Insight frameworks
+│   │   └── references/
+│   │       └── frameworks.md    # Business analysis frameworks
+│   └── report-writing/
+│       ├── SKILL.md             # Report structure guide
+│       ├── scripts/
+│       │   └── format_report.py # Report formatting utilities
+│       └── assets/
+│           └── report_template.md
+│
+├── data/
+│   └── sample_business_data.csv # Sample dataset for demo
+│
+├── notebooks/
+│   └── demo.ipynb               # Interactive Kaggle notebook
+│
 ├── output/                      # Generated reports and charts
 └── tests/                       # 48+ tests covering all 5 days' concepts
 ```
@@ -218,11 +237,8 @@ pytest tests/test_mcp_servers.py -v
 
 Built as a Capstone Project for the **5-Day AI Agents: Intensive Vibe Coding Course with Google** (July 2026).
 Course materials referenced:
-* Day 1: The New SDLC With Vibe Coding
-* Day 2: Agent Tools & Interoperability
-* Day 3: Agent Skills
-* Day 4: Vibe Coding Agent Security and Evaluation
-* Day 5: Spec-Driven Production Grade Development
-
-## 📝 License
-MIT License — Feel free to use and modify for your own projects.
+- Day 1: The New SDLC With Vibe Coding
+- Day 2: Agent Tools & Interoperability
+- Day 3: Agent Skills
+- Day 4: Vibe Coding Agent Security and Evaluation
+- Day 5: Spec-Driven Production Grade Development in the Age of Vibe Coding
