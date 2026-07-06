@@ -29,6 +29,7 @@ roles:
       - create_bar_chart
       - create_line_chart
       - compute_key_metrics
+      - prepare_chart_data
   chart_creator:
     allowed_tools:
       - create_bar_chart

@@ -1,318 +1,228 @@
 # BizInsight Agent: Multi-Agent Business Intelligence System
 
-> A multi-agent system that automates business data analysis, insight generation, and report creation — demonstrating **Multi-Agent Systems**, **MCP (Model Context Protocol)**, and **Agent Skills** from the 5-Day AI Agents: Intensive Vibe Coding Course with Google.
+> A production-ready multi-agent system that automates business data analysis, generates actionable insights, and creates professional reports — demonstrating **Multi-Agent Systems**, **MCP (Model Context Protocol)**, and **Agent Skills** from the 5-Day AI Agents: Intensive Vibe Coding Course with Google & Kaggle.
 
 ---
 
 ## 🏆 Kaggle Capstone Project — Agents for Business Track
 
-### Problem Statement
+### ❌ The Problem: Hidden Costs of Manual Data Analysis
+Small and medium businesses (SMBs) generate massive volumes of operational data daily (sales, expenses, inventory). However, due to resource constraints, **analyzing this data is often delayed or ignored entirely**. This leads to:
+- **Missed Opportunities**: Failure to identify sales trends and customer behavior patterns.
+- **Poor Decision Making**: Managing inventory and pricing without data-driven insights.
+- **Operational Inefficiency**: Wasting hours manually creating repetitive reports in Excel.
+- **Vulnerability**: Late detection of anomalies like sudden expense spikes or negative sales trends.
 
-Small and medium businesses generate large volumes of operational data (sales, expenses, inventory) but lack the resources to hire dedicated data analysts. Manual analysis is slow, inconsistent, and often misses critical patterns. This project builds an **autonomous multi-agent system** that ingests business data, performs structured analysis, generates actionable insights, and produces professional reports — all through natural language interaction.
+### ✅ The Solution: Autonomous Business Intelligence Agent
+BizInsight Agent is an autonomous multi-agent system that allows businesses to **instantly** analyze their data, receive actionable business insights, and generate professional reports — **without needing a dedicated data analyst**.
 
-### Key Concepts Demonstrated
+---
 
-| Course Concept | How It's Demonstrated |
-|---|---|
-| **Multi-Agent Systems** (Day 1) | 4 specialized CrewAI agents (Orchestrator, Data Analyst, Insight Generator, Report Writer) collaborate via structured delegation |
-| **MCP Servers** (Day 2) | 2 custom MCP servers (data access + chart generation) with Discovery → Configuration → Connection pattern |
-| **Agent Skills** (Day 3) | 3 SKILL.md files with Progressive Disclosure (metadata → body → scripts/references) |
-| **Context Engineering** (Day 1) | AGENTS.md provides project-level context; Skills loaded on-demand to prevent context rot |
-| **Security** (Day 4) | Input validation, sandboxed code execution, egress governance on MCP servers |
-| **Spec-Driven Dev** (Day 5) | BDD specs (Gherkin), Policy Server (Zero-Trust), Context Hygiene (PII masking) |
+## 📈 Business Impact & Value
+
+### 💰 Financial Benefits for SMBs
+1. **Reduced Analysis Costs**: Replaces the need for a part-time data analyst with a 24/7 available automated tool.
+2. **Faster Decision Making**: Reduces analysis time from days to seconds — enabling real-time responses to market changes.
+3. **Loss Prevention**: Early detection of anomalies (e.g., sudden drop in sales, unexpected expenses) via IQR statistical methods.
+4. **Revenue Growth**: Identifies top-performing products, seasonal trends, and underpenetrated markets to optimize pricing and inventory.
+
+### ⏱ Operational Efficiency
+- **Report Automation**: Automatically generates weekly/monthly repetitive reports.
+- **Reduced Human Error**: Eliminates calculation errors and manual copy-pasting.
+- **Scalability**: System effortlessly handles growing data volumes as the business expands.
+
+---
+
+## 🧠 Key Course Concepts Demonstrated
+
+| Course Concept | How It's Demonstrated in BizInsight |
+| :--- | :--- |
+| **Multi-Agent Systems** (Day 1) | 4 specialized CrewAI agents (Orchestrator, Data Analyst, Insight Generator, Report Writer) collaborate via structured delegation. |
+| **MCP Servers** (Day 2) | 2 custom MCP servers (data access + optional chart generation) using Discovery → Configuration → Connection pattern. Charts server is available but not activated by default (can be enabled via configuration). |
+| **Agent Skills** (Day 3) | 3 `SKILL.md` files with Progressive Disclosure (metadata → body → scripts/references). |
+| **Context Engineering** (Day 1) | `AGENTS.md` provides project-level context; Skills loaded on-demand to prevent context rot. |
+| **Security** (Day 4) | Input validation, sandboxed code execution, egress governance on MCP servers, Zero Ambient Authority. |
+| **Spec-Driven Dev** (Day 5) | BDD specs (Gherkin), Policy Server (Zero-Trust), Context Hygiene (PII masking). |
 
 ---
 
 ## 🏗️ Architecture Overview
 
-```
-┌──────────────────────────────────────────────────┐
-│                 User (Natural Language)          │
-│          "Analyze Q2 sales data and find..."     │
-└────────────────────┬─────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────┐
-│           Orchestrator Agent (Router)           │
-│    Routes requests, coordinates sub-agents      │
-└──┬──────────────┬───────────────┬───────────────┘
-   │              │               │
-   ▼              ▼               ▼
-┌─────────┐      ┌──────────┐ ┌──────────────┐
-│  Data   │      │ Insight  │ │   Report     │
-│ Analyst │      │ Generator│ │   Writer     │
-│  Agent  │      │  Agent   │ │   Agent      │
-└────┬────┘      └────┬─────┘ └──────┬───────┘
-     │                │              │
-     │         ┌──────┴──────┐       │
-     │         │  Agent      │       │
-     ▼         │  Skills     │       ▼
-┌────────────┐ │ (SKILL.md)  │  ┌────────────┐
-│  MCP       │ │             │  │  MCP       │
-│  Data      │   ◄───────────┘  │  Charts    │
-│  Server    │                  │  Server    │
-│            │                  │            │
-│ • CSV read │                  │ • Bar chart│
-│ • Filter   │                  │ • Line plot│
-│ • Aggregate│                  │ • Heatmap  │
-└────────────┘                  └────────────┘
+```mermaid
+graph TD
+    A[User: Natural Language Query] --> B[Orchestrator Agent]
+    B --> C[Data Analyst Agent]
+    B --> D[Insight Generator Agent]
+    B --> E[Report Writer Agent]
+
+    C -.-> C1[data-analysis SKILL.md]
+    C <--> F[MCP Data Server]
+    F --> F1[Read CSV / Filter / Aggregate]
+
+    D -.-> D1[insight-generation SKILL.md]
+
+    E -.-> E1[report-writing SKILL.md]
+    E --> H[Final Markdown Report]
+
+    style G fill:#f9f,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
+    G[MCP Charts Server - Optional] -.-> G1[Generate PNG Charts]
+    E -.-> G
 ```
 
 ### Agent Roles
-
-1. **Orchestrator Agent**: Receives user requests, breaks them into tasks, delegates to specialist agents, and synthesizes results. Implements the "Orchestrator" pattern from Day 1.
-
-2. **Data Analyst Agent**: Connects to data sources via MCP, performs statistical analysis (aggregation, trend detection, anomaly identification). Uses `data-analysis` Skill.
-
-3. **Insight Generator Agent**: Transforms raw analysis into business-relevant insights using frameworks (SWOT, Pareto, growth patterns). Uses `insight-generation` Skill.
-
-4. **Report Writer Agent**: Produces structured markdown reports with embedded charts (via MCP Charts Server). Uses `report-writing` Skill.
+1. **Orchestrator Agent**: Receives user requests, breaks them into tasks, delegates to specialist agents, and synthesizes results.
+2. **Data Analyst Agent**: Connects to data sources via MCP, performs statistical analysis (aggregation, trend detection, anomaly identification).
+3. **Insight Generator Agent**: Transforms raw analysis into business-relevant insights using frameworks (SWOT, Pareto, growth patterns).
+4. **Report Writer Agent**: Produces structured markdown reports. By default, it generates text-only reports; chart generation is an optional feature that can be enabled by providing the appropriate tools.
 
 ### MCP Servers
+1. **Data Server** (`mcp_servers/data_server/`): Tools for reading CSVs, filtering, computing aggregates, and detecting anomalies. (stdio transport) – Active by default.
+2. **Charts Server** (`mcp_servers/charts_server/`): Tools for generating matplotlib/seaborn charts (bar, line, pie, heatmap) and saving them as PNGs. (stdio transport) – Optional, can be activated via code changes if visual outputs are needed.
 
-1. **Data Server** (`mcp_servers/data_server/`): Provides tools for reading CSV files, filtering rows, computing aggregates, and detecting anomalies. Uses stdio transport.
+---
 
-2. **Charts Server** (`mcp_servers/charts_server/`): Provides tools for generating matplotlib/seaborn charts (bar, line, pie, heatmap) and saving them as files. Uses stdio transport.
+## 🎯 Case Study: From Data to Decisions
 
-### Agent Skills (SKILL.md)
+### 💬 User Interaction & Command
+```bash
+python main.py --data data/sample_business_data.csv --query "Analyze sales trends and identify top performing categories"
+```
 
-1. **data-analysis** (`skills/data-analysis/`): Defines how to approach business data analysis — column profiling, outlier detection using IQR, trend analysis, correlation checks. Includes Python scripts for statistical computations.
+### 🤖 System Execution Flow
+```text
+🤖 BizInsight Agent: I'll analyze your sales data to identify trends and top-performing categories.
 
-2. **insight-generation** (`skills/insight-generation/`): Defines business insight frameworks — what makes a good insight, Pareto analysis, YoY growth patterns, anomaly narration. Includes reference documents.
+📊 Step 1: Data Analyst Agent loading data via MCP Data Server...
+✅ Successfully loaded 54 transactions across 4 categories.
 
-3. **report-writing** (`skills/report-writing/`): Defines report structure — executive summary, methodology, findings, recommendations. Includes Jinja2 templates and formatting scripts.
+🔍 Step 2: Performing statistical analysis (IQR anomaly detection)...
+📈 Found: Electronics dominates with 62.4% of total sales
+⚠️ Found: Food & Beverage segment underperforming at 5.7%
+
+💡 Step 3: Insight Generator Agent transforming raw data into business insights...
+✅ Identified concentration risk in Electronics category
+✅ Identified growth opportunity in West region
+✅ Identified expansion potential in Food & Beverage segment
+
+📝 Step 4: Report Writer Agent generating final report...
+✅ Compiled final markdown report with executive summary and recommendations
+
+✅ Report successfully saved to: output/business_sales_trends_analysis_report.md
+```
+
+### 📤 Generated Output Excerpt (Business Report)
+The system automatically generates a comprehensive markdown report. Here is an excerpt of the actual output:
+
+> # Business Sales Trends Analysis Report
+> **Date of Generation: July 05, 2026**
+>
+> ## Executive Summary
+> - Total sales amount to **$546,100**, with Electronics dominating at **62.4%** of total sales, indicating a high reliance on this category.
+> - The region breakdown shows the South and North regions contribute **29.4%** and **26.5%** respectively, suggesting potential for growth in the less-represented West and East regions.
+> - Top-performing products include Smart Watch with **$175,700** in sales, showing stable performance with no anomalies detected.
+> - The Food & Beverage segment accounts for only **5.7%** of total sales ($30,900), highlighting a significant opportunity for expansion.
+>
+> ## Key Findings
+> 1. **Electronics Dominates Revenue**: Smart watches and wireless headphones represent over **61%** of electronics sales. This presents a risk if these top products face market shifts.
+> 2. **Regional Sales Distribution**: The West region remains underperforming and offers untapped demand.
+> 3. **Underexploited Food & Beverage Segment**: Clearly underdeveloped relative to other categories. Strategic product expansion could significantly boost sales share.
+>
+> ## Recommendations
+> 1. **Diversify Electronics Offerings**: Invest in complementary accessories to reduce dependency on top-tier products. *(Impact: High)*
+> 2. **Expand Regional Marketing**: Focus on localized campaigns in the West and East regions. *(Impact: Medium)*
+> 3. **Accelerate Food & Beverage Expansion**: Introduce organic and specialty food lines. *(Impact: High)*
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
+* Python 3.10+
+* An API key from [OpenRouter](https://openrouter.ai/) (supports Gemini, GPT, Claude) or Google Gemini API key.
 
-- Python 3.10+
-- An API key from [OpenRouter](https://openrouter.ai/) (supports Gemini, GPT, Claude, and more)
-- (Optional) Google Gemini API key if you prefer direct Gemini access
-
-### Installation
-
+### Installation & Execution
 ```bash
-# Clone the repository
+# 1. Clone the repository
 git clone https://github.com/sAjAd-2006/bizinsight-agent.git
 cd bizinsight-agent
 
-# Create virtual environment
+# 2. Create virtual environment & install dependencies
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
-
-# Install dependencies
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# Configure API key
+# 3. Configure API key
 cp .env.example .env
 # Edit .env and add your API key
-```
 
-### Running the Demo
-
-```bash
-# Run the main pipeline with sample data
+# 4. Run the analysis pipeline
 python main.py --data data/sample_business_data.csv --query "Analyze sales trends and identify top performing categories"
-
-# Run with custom options
-python main.py --data data/sample_business_data.csv --query "Find expense anomalies in Q2" --output output/
-```
-
-### Running MCP Servers Manually (for debugging)
-
-```bash
-# Start Data MCP Server
-python -m mcp_servers.data_server.server
-
-# In another terminal, verify with MCP Inspector
-npx @modelcontextprotocol/inspector python -m mcp_servers.data_server.server
 ```
 
 ---
 
 ## 📁 Project Structure
 
-```
+```text
 bizinsight-agent/
 ├── AGENTS.md                    # Project-level context (Day 1: Context Engineering)
-├── README.md                    # This file
-├── requirements.txt
-├── .env.example
 ├── main.py                      # Entry point - orchestrates the full pipeline
 ├── specs/                       # BDD Specifications (Day 5: SDD)
 │   └── analysis_pipeline.feature # Gherkin scenarios (Given/When/Then)
 ├── policy_server.py             # Day 5: Policy Server (Zero-Trust guardrail)
-├── context_resolver.py          # Day 5: Context Hygiene (PII masking, prompt sanitization)
-├── policies.yaml                # Day 5: Policy configuration (role/environment rules)
-│
+├── context_resolver.py          # Day 5: Context Hygiene (PII masking)
+├── policies.yaml                # Day 5: Policy configuration
 ├── crew/                        # CrewAI multi-agent system
-│   ├── config/
-│   │   ├── agents.yaml          # Agent definitions (roles, goals, backstories)
-│   │   └── tasks.yaml           # Task definitions (what each agent does)
-│   ├── agents/                  # Agent implementations
-│   │   ├── orchestrator.py
-│   │   ├── data_analyst.py
-│   │   ├── insight_generator.py
-│   │   └── report_writer.py
-│   └── tasks/                   # Task implementations
-│       ├── analyze_data.py
-│       ├── generate_insights.py
-│       └── write_report.py
-│
+│   ├── config/                  # agents.yaml & tasks.yaml
+│   ├── agents/                  # Orchestrator, Analyst, Insight, Writer
+│   └── tasks/                   # analyze, generate, write tasks
 ├── mcp_servers/                 # MCP Servers (Day 2: Interoperability)
-│   ├── data_server/
-│   │   ├── server.py            # MCP server for data access
-│   │   └── SKILL.md             # Skill documentation for the server
-│   └── charts_server/
-│       ├── server.py            # MCP server for chart generation
-│       └── SKILL.md
-│
+│   ├── data_server/             # MCP server for data access + SKILL.md
+│   └── charts_server/           # MCP server for chart generation + SKILL.md (optional)
 ├── skills/                      # Agent Skills (Day 3: Skills)
-│   ├── data-analysis/
-│   │   ├── SKILL.md             # Analysis methodology
-│   │   ├── scripts/
-│   │   │   └── analyze.py       # Statistical analysis functions
-│   │   └── references/
-│   │       └── methods.md       # Statistical methods reference
-│   ├── insight-generation/
-│   │   ├── SKILL.md             # Insight frameworks
-│   │   └── references/
-│   │       └── frameworks.md    # Business analysis frameworks
-│   └── report-writing/
-│       ├── SKILL.md             # Report structure guide
-│       ├── scripts/
-│       │   └── format_report.py # Report formatting utilities
-│       └── assets/
-│           └── report_template.md
-│
-├── data/
-│   └── sample_business_data.csv # Sample dataset for demo
-│
-├── notebooks/
-│   └── demo.ipynb               # Interactive Kaggle notebook
-│
+│   ├── data-analysis/           # SKILL.md + scripts + references
+│   ├── insight-generation/      # SKILL.md + frameworks
+│   └── report-writing/          # SKILL.md + templates
+├── data/                        # Sample dataset for demo
 ├── output/                      # Generated reports and charts
-│
-└── tests/
-    ├── test_mcp_servers.py
-    ├── test_skills.py
-    ├── test_crew.py
-    └── test_day5.py
+└── tests/                       # 48+ tests covering all 5 days' concepts
 ```
 
 ---
 
-## 📖 Concept Mapping to Course Content
+## 🧪 Testing & Evaluation
 
-### Day 1: The New SDLC with Vibe Coding
-
-| Concept | Implementation |
-|---|---|
-| **Agentic Engineering** | The project follows the disciplined end of the spectrum — formal specs (AGENTS.md), automated testing, structured agent definitions |
-| **Harness Engineering** | MCP servers + Skills form the "harness" around the LLM — tools, memory (context), and orchestration |
-| **Context Engineering** | AGENTS.md provides project-level context; Skills use Progressive Disclosure to load knowledge on-demand, preventing context rot |
-| **Orchestrator Pattern** | The Orchestrator Agent delegates tasks asynchronously to specialist agents, then synthesizes results |
-| **AGENTS.md** | Contains project conventions, coding standards, and skill catalog |
-
-### Day 2: Agent Tools & Interoperability
-
-| Concept | Implementation |
-|---|---|
-| **MCP Discovery** | Data and Charts servers are registered with proper tool schemas |
-| **MCP Configuration** | Environment variables for API keys, file paths scoped to project |
-| **MCP Connection** | stdio transport for local execution; tools verified via handshake |
-| **NxM Problem Solved** | Both agents connect to same MCP servers — O(N+M) instead of O(N*M) |
-| **MCP Best Practices** | No hardcoded credentials, read-only data access, scoped to project directory |
-
-### Day 3: Agent Skills
-
-| Concept | Implementation |
-|---|---|
-| **SKILL.md Format** | YAML frontmatter (name, description) + markdown instructions |
-| **Progressive Disclosure** | 3 levels: metadata always loaded → body on trigger → scripts/references on demand |
-| **Skill vs MCP** | Skills provide "know-how" (how to analyze), MCP provides "reach" (access to data) |
-| **DAG Orchestration** | Tasks flow in a directed acyclic graph: Analyze → Generate Insights → Write Report |
-| **Eval Coverage** | Tests verify skill triggering, output quality, and tool trajectory |
-
-### Day 4: Security & Evaluation
-
-| Concept | Implementation |
-|---|---|
-| **Sandboxing** | Data server restricts file access to `data/` directory only |
-| **Egress Governance** | MCP servers have no outbound network access; data stays local |
-| **Input Validation** | All MCP tool inputs are validated before execution |
-| **Zero Ambient Authority** | Each tool has minimal required permissions |
-| **Observability** | Structured logging of all agent actions and tool calls |
-
-### Day 5: Spec-Driven Production Grade Development
-
-| Concept | Implementation |
-|---|---|
-| **Spec-Driven Development (SDD)** | BDD specs in `specs/` using Gherkin (Given/When/Then) — specs are the source of truth |
-| **Hybrid Markdown + YAML** | SKILL.md uses YAML frontmatter for metadata, Markdown for methodology (per SkCC research) |
-| **Policy Server** | `policy_server.py` implements Structural Gating — YAML-based role/environment permissions |
-| **Zero-Trust Development** | Every tool call passes through Policy Server before execution; no ambient authority |
-| **Context Hygiene** | `context_resolver.py` — PII masking, `[[VARIABLE]]` placeholder resolution, prompt sanitization |
-| **AI-Generated Test Coverage** | 48+ tests covering all 5 days' concepts; eval-based quality gates |
-| **Where Instructions Live** | 4 layers: Chat → `specs/` → `skills/` (SKILL.md) → `AGENTS.md` (global) |
-
----
-
-## 🧪 Testing
+The project includes comprehensive AI-generated tests verifying skill triggering, MCP tool trajectories, and output quality.
 
 ```bash
 # Run all tests
 pytest tests/ -v
 
-# Test MCP servers
+# Test MCP servers specifically
 pytest tests/test_mcp_servers.py -v
-
-# Test skill loading
-pytest tests/test_skills.py -v
-
-# Test crew execution
-pytest tests/test_crew.py -v
 ```
 
 ---
 
-## 📊 Sample Output
+## 🔮 Future Roadmap
 
-When you run the demo with the sample dataset, the system produces:
-
-1. **Statistical Analysis** — column profiles, trend detection, anomaly flags
-2. **Business Insights** — categorized findings with business impact ratings
-3. **Visualization Charts** — trend lines, category breakdowns, heatmaps (saved as PNG)
-4. **Final Report** — structured markdown document with executive summary, methodology, findings, and recommendations
-
----
-
-## 🛠️ Extending the Project
-
-- **Add new MCP servers**: Connect to Google Sheets, BigQuery, or Salesforce
-- **Add new Skills**: Create domain-specific skills (financial analysis, inventory optimization)
-- **Add new Agents**: Extend with a Forecasting Agent or an Alert Agent
-- **Deploy**: Containerize with Docker, deploy on GCP Cloud Run
-
----
-
-## 📝 License
-
-MIT License — Feel free to use and modify for your own projects.
+- **Data Source Expansion**: Add MCP servers for Google Sheets, BigQuery, and Salesforce integration.
+- **Predictive Analytics**: Implement a Forecasting Agent to predict sales trends and inventory needs.
+- **User Interface**: Develop a web dashboard using Streamlit for non-technical user interaction.
+- **Deployment**: Containerize with Docker and deploy on Google Cloud Run for scalable, enterprise-grade access.
+- **Enhanced Visualization**: Activate and extend the Charts Server to offer more chart types and interactive visualizations.
 
 ---
 
 ## 🙏 Acknowledgments
 
 Built as a Capstone Project for the **5-Day AI Agents: Intensive Vibe Coding Course with Google** (July 2026).
-
 Course materials referenced:
-- Day 1: The New SDLC With Vibe Coding
-- Day 2: Agent Tools & Interoperability
-- Day 3: Agent Skills
-- Day 4: Vibe Coding Agent Security and Evaluation
-- Day 5: Spec-Driven Production Grade Development in the Age of Vibe Coding
+* Day 1: The New SDLC With Vibe Coding
+* Day 2: Agent Tools & Interoperability
+* Day 3: Agent Skills
+* Day 4: Vibe Coding Agent Security and Evaluation
+* Day 5: Spec-Driven Production Grade Development
+
+## 📝 License
+MIT License — Feel free to use and modify for your own projects.

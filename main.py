@@ -19,6 +19,8 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, Any
+from pydantic import BaseModel, Field
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.resolve()
@@ -29,6 +31,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 import crewai
 from crewai import Agent, Task, Crew, Process
+from crewai.tools import BaseTool
 
 
 # ============================================================
@@ -54,20 +57,18 @@ def create_policy_guarded_tool(tool, policy_service):
     Day 5: Wrap a CrewAI tool with Policy Server enforcement.
     Before the tool executes, the Policy Server checks if it's allowed.
     """
-    from crewai.tools import BaseTool
-
     class PolicyGuardedTool(BaseTool):
         name: str = tool.name + "_guarded"
         description: str = tool.description + " [Policy-guarded: checked before execution]"
+        args_schema: type[BaseModel] = tool.args_schema  # حفظ schema اصلی
 
-        def _run(self, *args, **kwargs):
+        def _run(self, **kwargs) -> str:
             # Day 5: Structural Gating — check before execution
             if not policy_service.is_tool_allowed(tool.name):
                 return json.dumps({"error": policy_service.get_violation_message(tool.name)})
-            return tool._run(*args, **kwargs)
+            return tool._run(**kwargs)
 
-    guarded = PolicyGuardedTool()
-    return guarded
+    return PolicyGuardedTool()
 
 
 # ============================================================
@@ -92,14 +93,61 @@ def load_skill(skill_name: str) -> str:
 # MCP Tool Integration (Day 2: Discovery → Configuration → Connection)
 # ============================================================
 
+# ---------- Pydantic Schemas for Tools ----------
+
+class ReadCSVInput(BaseModel):
+    filename: str = Field(..., description="Name of the CSV file in the data directory")
+    max_rows: int = Field(100, description="Maximum number of rows to return (1-500)")
+
+class GetColumnsInput(BaseModel):
+    filename: str = Field(..., description="Name of the CSV file in the data directory")
+
+class ComputeAggregateInput(BaseModel):
+    filename: str = Field(..., description="Name of the CSV file")
+    group_by: str = Field(..., description="Column to group by")
+    metric_column: str = Field(..., description="Numeric column to aggregate")
+    aggregation: str = Field("sum", description="Aggregation function: sum/mean/median/min/max/count")
+
+class DetectAnomaliesInput(BaseModel):
+    filename: str = Field(..., description="Name of the CSV file")
+    column: str = Field(..., description="Numeric column to check for anomalies")
+    method: str = Field("iqr", description="Method: iqr or zscore")
+    filter_column: Optional[str] = Field(None, description="Optional column to filter rows")
+    filter_value: Optional[str] = Field(None, description="Optional value to filter on")
+
+class ComputeKeyMetricsInput(BaseModel):
+    filename: str = Field(..., description="Name of the CSV file")
+    sales_col: str = Field("sales", description="Name of the sales/numeric column")
+    category_col: str = Field("category", description="Name of the category column")
+    region_col: str = Field("region", description="Name of the region column")
+    product_col: str = Field("product", description="Name of the product column")
+
+class CreateBarChartInput(BaseModel):
+    data_json: str = Field(..., description="JSON array of objects with labels and values")
+    labels_key: str = Field(..., description="Key in each object for the label")
+    values_key: str = Field(..., description="Key in each object for the value")
+    title: str = Field("Bar Chart", description="Chart title")
+    filename: str = Field("bar_chart.png", description="Output filename")
+
+class CreateLineChartInput(BaseModel):
+    data_json: str = Field(..., description="JSON array of objects with x and y values")
+    x_key: str = Field(..., description="Key for x-axis values")
+    y_key: str = Field(..., description="Key for y-axis values")
+    title: str = Field("Line Chart", description="Chart title")
+    filename: str = Field("line_chart.png", description="Output filename")
+
+class PrepareChartDataInput(BaseModel):
+    metrics_json: str = Field(..., description="Full JSON output from compute_key_metrics")
+    group_by: str = Field("category", description="Group by: category, region, or product")
+
+
+# ---------- Tool Implementations ----------
+
 def create_mcp_tools():
     """
     Create CrewAI-compatible tool wrappers for MCP servers.
     Demonstrates Day 2: MCP as the 'USB-C' for agent tools.
-    In production, use crewai-tools MCP integration.
-    For the capstone demo, we use direct Python imports for simplicity.
     """
-    from crewai.tools import BaseTool
     import pandas as pd
     import numpy as np
 
@@ -111,10 +159,8 @@ def create_mcp_tools():
 
     class ReadCSVTool(BaseTool):
         name: str = "read_csv"
-        description: str = (
-            "Read a CSV file from the data directory. Returns first N rows as JSON. "
-            "Args: filename (str), max_rows (int, default 100)."
-        )
+        description: str = "Read a CSV file and return first N rows as JSON."
+        args_schema: type[BaseModel] = ReadCSVInput
 
         def _run(self, filename: str, max_rows: int = 100) -> str:
             max_rows = min(max(1, max_rows), 500)
@@ -133,7 +179,8 @@ def create_mcp_tools():
 
     class GetColumnsTool(BaseTool):
         name: str = "get_columns"
-        description: str = "Get column names, data types, null counts, and unique values for a CSV file."
+        description: str = "Get column names, data types, null counts, and unique values."
+        args_schema: type[BaseModel] = GetColumnsInput
 
         def _run(self, filename: str) -> str:
             path = os.path.abspath(os.path.join(DATA_DIR, filename))
@@ -152,10 +199,8 @@ def create_mcp_tools():
 
     class ComputeAggregateTool(BaseTool):
         name: str = "compute_aggregate"
-        description: str = (
-            "Compute aggregated statistics grouped by a column. "
-            "Args: filename, group_by, metric_column, aggregation (sum/mean/median/min/max/count)."
-        )
+        description: str = "Compute aggregated statistics grouped by a column."
+        args_schema: type[BaseModel] = ComputeAggregateInput
 
         def _run(self, filename: str, group_by: str, metric_column: str, aggregation: str = "sum") -> str:
             path = os.path.abspath(os.path.join(DATA_DIR, filename))
@@ -176,25 +221,20 @@ def create_mcp_tools():
 
     class DetectAnomaliesTool(BaseTool):
         name: str = "detect_anomalies"
-        description: str = (
-            "Detect outliers in a numeric column using IQR method. "
-            "Args: filename, column, method (iqr/zscore), "
-            "filter_column (optional), filter_value (optional) — if provided, only rows where filter_column == filter_value are analyzed."
-        )
+        description: str = "Detect outliers in a numeric column using IQR method."
+        args_schema: type[BaseModel] = DetectAnomaliesInput
 
         def _run(self, filename: str, column: str, method: str = "iqr",
-                  filter_column: str = "", filter_value: str = "") -> str:
+                  filter_column: Optional[str] = None, filter_value: Optional[str] = None) -> str:
             path = os.path.abspath(os.path.join(DATA_DIR, filename))
             if not path.startswith(os.path.abspath(DATA_DIR)):
                 return json.dumps({"error": "Access denied"})
             df = pd.read_csv(path)
             if column not in df.columns:
                 return json.dumps({"error": "Column not found"})
-            # Filter subset if requested (e.g., only Smart Watch rows)
             if filter_column and filter_value:
                 if filter_column not in df.columns:
                     return json.dumps({"error": f"Filter column '{filter_column}' not found"})
-                # Case-insensitive filtering
                 mask = df[filter_column].astype(str).str.lower() == filter_value.lower()
                 df = df[mask]
                 if len(df) == 0:
@@ -217,11 +257,70 @@ def create_mcp_tools():
                 "anomaly_values": series[mask].tolist()
             })
 
-    # --- Charts Tools ---
+    class ComputeKeyMetricsTool(BaseTool):
+        name: str = "compute_key_metrics"
+        description: str = "Pre-compute all key business metrics from a CSV file."
+        args_schema: type[BaseModel] = ComputeKeyMetricsInput
+
+        def _run(self, filename: str, sales_col: str = "sales", category_col: str = "category",
+                 region_col: str = "region", product_col: str = "product") -> str:
+            path = os.path.abspath(os.path.join(DATA_DIR, filename))
+            if not path.startswith(os.path.abspath(DATA_DIR)):
+                return json.dumps({"error": "Access denied"})
+            df = pd.read_csv(path)
+            # Validate columns exist
+            for col in [sales_col, category_col, region_col, product_col]:
+                if col not in df.columns:
+                    return json.dumps({"error": f"Column '{col}' not found in data"})
+            df[sales_col] = pd.to_numeric(df[sales_col], errors="coerce")
+            total_sales = float(df[sales_col].sum())
+            total_rows = len(df)
+
+            cat_group = df.groupby(category_col)[sales_col].sum()
+            categories = []
+            for cat, val in cat_group.sort_values(ascending=False).items():
+                categories.append({
+                    "category": cat,
+                    "total_sales": float(val),
+                    "share_pct": round(float(val) / total_sales * 100, 1),
+                    "num_records": int(len(df[df[category_col] == cat]))
+                })
+
+            reg_group = df.groupby(region_col)[sales_col].sum()
+            regions = []
+            for reg, val in reg_group.sort_values(ascending=False).items():
+                regions.append({
+                    "region": reg,
+                    "total_sales": float(val),
+                    "share_pct": round(float(val) / total_sales * 100, 1),
+                    "num_records": int(len(df[df[region_col] == reg]))
+                })
+
+            prod_group = df.groupby(df[product_col].str.lower())[sales_col].agg(["mean", "median", "sum", "count"])
+            products = []
+            for prod, row in prod_group.sort_values("sum", ascending=False).iterrows():
+                products.append({
+                    "product": prod,
+                    "mean_sales": round(float(row["mean"]), 1),
+                    "median_sales": round(float(row["median"]), 1),
+                    "total_sales": round(float(row["sum"]), 1),
+                    "num_records": int(row["count"])
+                })
+
+            return json.dumps({
+                "total_sales": total_sales,
+                "total_rows": total_rows,
+                "categories": categories,
+                "regions": regions,
+                "products": products
+            }, indent=2)
+
+    # --- Charts Tools (still defined but not given to report_writer) ---
 
     class CreateBarChartTool(BaseTool):
         name: str = "create_bar_chart"
-        description: str = "Create a bar chart from JSON data and save as PNG. Args: data_json, labels_key, values_key, title, filename."
+        description: str = "Create a bar chart from JSON data and save as PNG."
+        args_schema: type[BaseModel] = CreateBarChartInput
 
         def _run(self, data_json: str, labels_key: str, values_key: str, title: str = "Bar Chart", filename: str = "bar_chart.png") -> str:
             import matplotlib
@@ -244,7 +343,8 @@ def create_mcp_tools():
 
     class CreateLineChartTool(BaseTool):
         name: str = "create_line_chart"
-        description: str = "Create a line chart from JSON data and save as PNG. Args: data_json, x_key, y_key, title, filename."
+        description: str = "Create a line chart from JSON data and save as PNG."
+        args_schema: type[BaseModel] = CreateLineChartInput
 
         def _run(self, data_json: str, x_key: str, y_key: str, title: str = "Line Chart", filename: str = "line_chart.png") -> str:
             import matplotlib
@@ -264,68 +364,37 @@ def create_mcp_tools():
             plt.close(fig)
             return json.dumps({"status": "success", "file": filename, "path": out_path})
 
-    class ComputeKeyMetricsTool(BaseTool):
-        name: str = "compute_key_metrics"
-        description: str = (
-            "Pre-compute all key business metrics from a CSV file to avoid LLM arithmetic errors. "
-            "Returns: total_sales, category breakdown (name, sum, share_pct), regional breakdown, "
-            "product averages (case-insensitive grouping). Args: filename (str)."
-        )
+    class PrepareChartDataTool(BaseTool):
+        name: str = "prepare_chart_data"
+        description: str = "Extract chart-ready data from compute_key_metrics JSON output."
+        args_schema: type[BaseModel] = PrepareChartDataInput
 
-        def _run(self, filename: str) -> str:
-            path = os.path.abspath(os.path.join(DATA_DIR, filename))
-            if not path.startswith(os.path.abspath(DATA_DIR)):
-                return json.dumps({"error": "Access denied"})
-            df = pd.read_csv(path)
-            df["sales"] = pd.to_numeric(df["sales"], errors="coerce")
-            total_sales = float(df["sales"].sum())
-            total_rows = len(df)
+        def _run(self, metrics_json: str, group_by: str = "category") -> str:
+            try:
+                data = json.loads(metrics_json)
+            except:
+                return json.dumps({"error": "Invalid JSON input"})
+            if group_by == "category":
+                items = data.get("categories", [])
+                label_key = "category"
+                value_key = "total_sales"
+            elif group_by == "region":
+                items = data.get("regions", [])
+                label_key = "region"
+                value_key = "total_sales"
+            elif group_by == "product":
+                items = data.get("products", [])
+                label_key = "product"
+                value_key = "total_sales"
+            else:
+                return json.dumps({"error": f"Unknown group_by: {group_by}"})
+            result = [{"label": item[label_key], "value": item[value_key]} for item in items]
+            return json.dumps(result)
 
-            # Category breakdown with exact percentages
-            cat_group = df.groupby("category")["sales"].sum()
-            categories = []
-            for cat, val in cat_group.sort_values(ascending=False).items():
-                categories.append({
-                    "category": cat,
-                    "total_sales": float(val),
-                    "share_pct": round(float(val) / total_sales * 100, 1),
-                    "num_records": int(len(df[df["category"] == cat]))
-                })
-
-            # Regional breakdown with exact percentages
-            reg_group = df.groupby("region")["sales"].sum()
-            regions = []
-            for reg, val in reg_group.sort_values(ascending=False).items():
-                regions.append({
-                    "region": reg,
-                    "total_sales": float(val),
-                    "share_pct": round(float(val) / total_sales * 100, 1),
-                    "num_records": int(len(df[df["region"] == reg]))
-                })
-
-            # Product-level averages (case-insensitive grouping)
-            prod_group = df.groupby(df["product"].str.lower())["sales"].agg(["mean", "median", "sum", "count"])
-            products = []
-            for prod, row in prod_group.sort_values("sum", ascending=False).iterrows():
-                products.append({
-                    "product": prod,
-                    "mean_sales": round(float(row["mean"]), 1),
-                    "median_sales": round(float(row["median"]), 1),
-                    "total_sales": round(float(row["sum"]), 1),
-                    "num_records": int(row["count"])
-                })
-
-            return json.dumps({
-                "total_sales": total_sales,
-                "total_rows": total_rows,
-                "categories": categories,
-                "regions": regions,
-                "products": products
-            }, indent=2)
-
+    # Return all tools including chart tools, but report_writer will not be given chart tools.
     return [
         ReadCSVTool(), GetColumnsTool(), ComputeAggregateTool(),
-        DetectAnomaliesTool(), ComputeKeyMetricsTool(),
+        DetectAnomaliesTool(), ComputeKeyMetricsTool(), PrepareChartDataTool(),
         CreateBarChartTool(), CreateLineChartTool()
     ]
 
@@ -341,7 +410,7 @@ def create_agents(tools, llm, policy_service=None):
     with open(PROJECT_ROOT / "crew" / "config" / "agents.yaml", "r") as f:
         agent_configs = yaml.safe_load(f)
 
-    # Load Skills for each agent (Day 3: Progressive Disclosure)
+    # Load Skills
     data_analysis_skill = load_skill("data-analysis")
     insight_skill = load_skill("insight-generation")
     report_skill = load_skill("report-writing")
@@ -365,7 +434,7 @@ def create_agents(tools, llm, policy_service=None):
         goal=agent_configs["data_analyst"]["goal"],
         backstory=agent_configs["data_analyst"]["backstory"]
             + f"\n\n## Your Skill (always follow this methodology):\n{data_analysis_skill}",
-        tools=active_tools,
+        tools=active_tools,  # data analyst gets all tools
         llm=llm,
         verbose=True,
         allow_delegation=False,
@@ -381,12 +450,13 @@ def create_agents(tools, llm, policy_service=None):
         allow_delegation=False,
     )
 
+    # Report Writer has NO chart tools (as per user's previous request)
     report_writer = Agent(
         role=agent_configs["report_writer"]["role"],
         goal=agent_configs["report_writer"]["goal"],
         backstory=agent_configs["report_writer"]["backstory"]
             + f"\n\n## Your Skill (follow this template):\n{report_skill}",
-        tools=[t for t in active_tools if "chart" in t.name.lower()],
+        tools=[],   # No tools at all, so it cannot generate charts
         llm=llm,
         verbose=True,
         allow_delegation=False,
@@ -402,25 +472,19 @@ def create_agents(tools, llm, policy_service=None):
 def run_analysis(data_file: str, query: str, output_dir: str = "output",
                  enable_policy: bool = True, role: str = "analyst"):
     """Run the full multi-agent analysis pipeline."""
-    print("=" * 60)
-    print("BizInsight Agent — Multi-Agent Business Intelligence")
-    print("=" * 60)
-    print(f"Data: {data_file}")
-    print(f"Query: {query}")
-    print(f"Output: {output_dir}")
-    print(f"Policy Server: {'enabled' if enable_policy else 'disabled'}")
-    print()
-
-    # Ensure output directory exists
+    
+    print(f"🤖 BizInsight Agent: I'll analyze your data to answer your query: '{query}'")
+    
     os.makedirs(output_dir, exist_ok=True)
 
-    # Initialize LLM
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         print("ERROR: OPENROUTER_API_KEY not set. Copy .env.example to .env and add your key.")
         sys.exit(1)
 
     from crewai import LLM
+    import pandas as pd
+
     model_name = os.environ.get("LLM_MODEL", "google/gemini-2.5-flash")
     base_url = os.environ.get("OPTIONAL_BASE_URL", "https://openrouter.ai/api/v1")
 
@@ -430,43 +494,95 @@ def run_analysis(data_file: str, query: str, output_dir: str = "output",
         base_url=base_url
     )
 
-    # Day 5: Create Policy Server (Zero-Trust Development)
     policy_service = None
     if enable_policy:
-        print("[Day 5] Initializing Policy Server (Zero-Trust)...")
+        print("\n🔒 Initializing Policy Server (Zero-Trust Security)...")
         policy_service = create_policy_service(role=role)
         allowed = policy_service.list_allowed_tools()
-        print(f"  Role: {role} | Allowed tools: {allowed}")
-        print()
+        print(f"   Role: {role} | Allowed tools: {allowed}")
 
-    # Create tools (Day 2: MCP integration)
-    print("[Day 2] Creating MCP tool wrappers...")
+    print("\n📊 Step 1: Data Analyst Agent loading data via MCP Data Server...")
+    
+    # ---------- DYNAMIC COLUMN DETECTION ----------
+    try:
+        df_temp = pd.read_csv(data_file)
+        # Detect numeric column (likely sales)
+        numeric_cols = df_temp.select_dtypes(include=['number']).columns.tolist()
+        # Try to find a column with 'sales' or 'revenue' in name, else use first numeric
+        sales_col_candidates = [c for c in numeric_cols if any(k in c.lower() for k in ['sales', 'revenue', 'amount'])]
+        sales_col = sales_col_candidates[0] if sales_col_candidates else numeric_cols[0] if numeric_cols else None
+        
+        # Detect categorical columns for category, region, product
+        cat_cols = df_temp.select_dtypes(include=['object']).columns.tolist()
+        # Map based on common names
+        category_col = next((c for c in cat_cols if 'category' in c.lower()), cat_cols[0] if cat_cols else None)
+        region_col = next((c for c in cat_cols if 'region' in c.lower()), cat_cols[1] if len(cat_cols) > 1 else None)
+        product_col = next((c for c in cat_cols if 'product' in c.lower()), cat_cols[-1] if cat_cols else None)
+        
+        # Fallbacks if detection fails
+        if sales_col is None:
+            raise ValueError("No numeric column found in data")
+        if category_col is None:
+            category_col = cat_cols[0] if cat_cols else None
+        if region_col is None:
+            region_col = cat_cols[1] if len(cat_cols) > 1 else None
+        if product_col is None:
+            product_col = cat_cols[-1] if cat_cols else None
+
+        # Choose a target product for anomaly detection (top selling product)
+        # Group by product_col and sum sales_col to find the top product
+        if product_col and sales_col:
+            product_sales = df_temp.groupby(product_col)[sales_col].sum()
+            if not product_sales.empty:
+                target_product = product_sales.idxmax()
+            else:
+                target_product = "unknown"
+        else:
+            target_product = "unknown"
+
+        print(f"✅ Detected columns: sales='{sales_col}', category='{category_col}', region='{region_col}', product='{product_col}'")
+        print(f"   Target product for anomaly detection: '{target_product}'")
+        
+    except Exception as e:
+        print(f"⚠️ Error detecting columns: {e}")
+        # Fallback to defaults
+        sales_col = "sales"
+        category_col = "category"
+        region_col = "region"
+        product_col = "product"
+        target_product = "Smart Watch"
+        print(f"   Using default column names: sales='{sales_col}', category='{category_col}', region='{region_col}', product='{product_col}'")
+        print(f"   Target product: '{target_product}'")
+
+    # ---------- END DYNAMIC COLUMN DETECTION ----------
+
     tools = create_mcp_tools()
-    print(f"  Tools available: {[t.name for t in tools]}")
-    print()
 
-    # Create agents (Day 1: Multi-Agent + Day 3: Skills + Day 5: Policy)
-    print("[Day 1+3+5] Creating agents with Skills + Policy Guard...")
     orchestrator, data_analyst, insight_generator, report_writer = create_agents(
         tools, llm, policy_service=policy_service
     )
-    print(f"  Agents: {orchestrator.role}, {data_analyst.role}, {insight_generator.role}, {report_writer.role}")
-    print()
 
-    # Define tasks (DAG Orchestration — Day 3)
-    print("[Day 3] Defining task DAG: Analyze -> Generate Insights -> Write Report")
+    filename_only = os.path.basename(data_file)
 
-    filename_only = os.path.basename(data_file) 
+    # ---------- DYNAMIC TASK DESCRIPTIONS ----------
+    analyze_task_description = (
+        f"Analyze the business data in '{filename_only}' to answer: {query}. "
+        f"Follow this exact sequence — do NOT skip steps or compute numbers in your head:\n"
+        f"Step 1: Use get_columns with filename='{filename_only}'.\n"
+        f"Step 2: Use compute_key_metrics with filename='{filename_only}', "
+        f"sales_col='{sales_col}', category_col='{category_col}', region_col='{region_col}', product_col='{product_col}' "
+        f"to get pre-computed totals, category shares, regional shares, and product averages. "
+        f"USE THESE EXACT NUMBERS — do not recalculate.\n"
+        f"Step 3: Use compute_aggregate with filename='{filename_only}' for any additional groupings needed.\n"
+        f"Step 4: Use detect_anomalies with filename='{filename_only}', column='{sales_col}', "
+        f"filter_column='{product_col}', filter_value='{target_product}' to check anomalies FOR THAT PRODUCT ONLY (not the whole dataset).\n"
+        f"Step 5: Compile ALL tool outputs into a single structured JSON.\n"
+        f"CRITICAL: All percentages, means, and totals must come directly from tool output. "
+        f"Never compute share_pct = category_sales / total_sales yourself — the tool already provides it."
+    )
+
     analyze_task = Task(
-        description=f"Analyze the business data in '{filename_only}' to answer: {query}. "
-                    f"Follow this exact sequence — do NOT skip steps or compute numbers in your head:\n"
-                    f"Step 1: Use get_columns with filename='{filename_only}'.\n"
-                    f"Step 2: Use compute_key_metrics with filename='{filename_only}' to get pre-computed totals, category shares, regional shares, and product averages. USE THESE EXACT NUMBERS — do not recalculate.\n"
-                    f"Step 3: Use compute_aggregate with filename='{filename_only}' for any additional groupings needed.\n"
-                    f"Step 4: Use detect_anomalies with filename='{filename_only}', column='sales', filter_column='product', filter_value='Smart Watch' to check anomalies FOR THAT PRODUCT ONLY (not the whole dataset).\n"
-                    f"Step 5: Compile ALL tool outputs into a single structured JSON.\n"
-                    f"CRITICAL: All percentages, means, and totals must come directly from tool output. "
-                    f"Never compute share_pct = category_sales / total_sales yourself — the tool already provides it.",
+        description=analyze_task_description,
         expected_output="Structured JSON containing: key_metrics (from compute_key_metrics tool), "
                     "column profiles (from get_columns), anomaly results (from detect_anomalies with filter). "
                     "All numbers must be verbatim from tool output — no self-computed arithmetic.",
@@ -483,35 +599,39 @@ def run_analysis(data_file: str, query: str, output_dir: str = "output",
         context=[analyze_task],
     )
 
+    report_task_description = (
+        f"Write a professional markdown report. Data source: {data_file}. Query: {query}. "
+        f"Today's date: {datetime.now().strftime('%B %d, %Y')}. Follow the report-writing skill template.\n\n"
+        f"STRUCTURE:\n"
+        f"1. Header: 'Date of Generation: {datetime.now().strftime('%B %d, %Y')}' (use THIS exact date, not any other date)\n"
+        f"2. Executive Summary: 5 bullets, each with an EXACT number from the analysis results\n"
+        f"3. Data Overview: row count (use the exact 'total_rows' from compute_key_metrics output, do NOT hardcode it), "
+        f"date range, categories, regions\n"
+        f"4. Key Findings: for each finding, quote the EXACT metric from the tool output — do NOT recalculate\n"
+        f"5. Detailed Analysis\n"
+        f"6. Recommendations\n"
+        f"7. Appendix\n\n"
+        f"CRITICAL RULES:\n"
+        f"- Use the EXACT date provided above. NEVER fabricate a date.\n"
+        f"- Every percentage must come verbatim from compute_key_metrics output (share_pct field).\n"
+        f"- Every average must come verbatim from compute_key_metrics output (mean_sales field).\n"
+        f"- Every anomaly count must come verbatim from detect_anomalies output (anomaly_count field).\n"
+        f"- If the anomaly_count is 0 for a product, say 'No anomalies detected' — do NOT claim anomalies exist.\n"
+        f"- You have access to the outputs of previous tasks via context. Use them to extract numbers.\n"
+    )
+
     report_task = Task(
-        description=f"Write a professional markdown report. Data source: {data_file}. "
-                    f"Query: {query}. Today's date: {datetime.now().strftime('%B %d, %Y')}. "
-                    f"Follow the report-writing skill template.\n\n"
-                    f"STRUCTURE:\n"
-                    f"1. Header: 'Date of Generation: {datetime.now().strftime('%B %d, %Y')}' (use THIS exact date, not any other date)\n"
-                    f"2. Executive Summary: 5 bullets, each with an EXACT number from the analysis results\n"
-                    f"3. Data Overview: row count (use the exact 'total_rows' from compute_key_metrics output, which is 54, not 54000), date range, categories, regions\n"
-                    f"4. Key Findings: for each finding, quote the EXACT metric from the tool output — do NOT recalculate\n"
-                    f"5. Detailed Analysis\n"
-                    f"6. Recommendations\n"
-                    f"7. Appendix\n\n"
-                    f"CRITICAL RULES:\n"
-                    f"- Use the EXACT date provided above. NEVER fabricate a date.\n"
-                    f"- Every percentage must come verbatim from compute_key_metrics output (share_pct field).\n"
-                    f"- Every average must come verbatim from compute_key_metrics output (mean_sales field).\n"
-                    f"- Every anomaly count must come verbatim from detect_anomalies output (anomaly_count field).\n"
-                    f"- If the anomaly_count is 0 for a product, say 'No anomalies detected' — do NOT claim anomalies exist.\n"
-                    f"- Generate at least one chart using the chart tools. You MUST call the tool (e.g., create_bar_chart) with the appropriate JSON data from the analysis results. Do NOT just write the code; execute it.\n"
-                    f"- The chart should be saved as a PNG file in the output directory.",
-        expected_output="Complete markdown report with: correct date from datetime.now(), executive summary "
-                        "with verbatim numbers from tools, key findings quoting exact share_pct/mean_sales values, "
-                        "detailed analysis, and prioritized recommendations.",
+        description=report_task_description,
+        expected_output="Complete markdown report with executive summary, data overview, key findings, detailed analysis, and recommendations.",
         agent=report_writer,
         context=[analyze_task, insights_task],
     )
 
-    # Create and run crew
-    print("[Day 1] Starting CrewAI crew (Sequential process)...\n")
+    # ---------- END DYNAMIC TASK DESCRIPTIONS ----------
+
+    print("\n🔍 Step 2: Performing statistical analysis (IQR anomaly detection)...")
+    print("💡 Step 3: Insight Generator Agent transforming raw data into business insights...")
+    print("📝 Step 4: Report Writer Agent generating final report...")
 
     crew = Crew(
         agents=[data_analyst, insight_generator, report_writer],
@@ -522,32 +642,19 @@ def run_analysis(data_file: str, query: str, output_dir: str = "output",
 
     result = crew.kickoff()
 
-    # Save report
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_filename = f"report_{timestamp}.md"
+    import re
+    slug = re.sub(r'[^a-z0-9]+', '_', query.lower()).strip('_')[:50]
+    if not slug:
+        slug = "analysis_report"
+    report_filename = f"{slug}.md"
     report_path = os.path.join(output_dir, report_filename)
 
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(str(result))
 
-    print()
-    print("=" * 60)
-    print("ANALYSIS COMPLETE")
-    print("=" * 60)
-    print(f"Report saved to: {report_path}")
-    print(f"Charts saved to: {output_dir}/")
-    print()
-
-    # Print concepts demonstrated
-    print("Course Concepts Demonstrated:")
-    print("  [Day 1] Multi-Agent System: 3 CrewAI agents in sequential DAG")
-    print("  [Day 1] Context Engineering: AGENTS.md + Skill loading")
-    print("  [Day 2] MCP Servers: 6 tools via Data + Charts servers")
-    print("  [Day 3] Agent Skills: 3 SKILL.md files with Progressive Disclosure")
-    print("  [Day 4] Security: Sandboxed file I/O, input validation, egress governance")
-    print("  [Day 5] SDD: BDD specs (Gherkin) in specs/ directory")
-    print("  [Day 5] Policy Server: Structural gating via policies.yaml")
-    print("  [Day 5] Context Hygiene: PII masking + [[VARIABLE]] placeholder resolution")
+    # No charts generated, just a notice
+    print("ℹ️ No chart files generated (as per configuration).")
+    print("\n✅ Report successfully saved to: {report_path}")
 
     return report_path
 
